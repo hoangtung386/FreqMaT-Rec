@@ -1,0 +1,30 @@
+# Shared protocol: leave-one-out, FULL-ranking (no sampled metrics)
+data_path: data
+load_col:
+  inter: [user_id, item_id, rating, timestamp]
+USER_ID_FIELD: user_id
+ITEM_ID_FIELD: item_id
+TIME_FIELD: timestamp
+user_inter_num_interval: "[5,inf)"
+item_inter_num_interval: "[5,inf)"
+MAX_ITEM_LIST_LENGTH: 50
+benchmark_filename: null
+eval_args:
+  split: {LS: valid_and_test}
+  order: TO
+  mode: full
+repeatable: true
+metrics: [Hit, NDCG, Recall]
+topk: [5, 10]
+valid_metric: NDCG@10
+train_batch_size: 256
+eval_batch_size: 256
+epochs: 200
+stopping_step: 10
+learning_rate: 0.001
+weight_decay: 0.0
+seed: 2024
+reproducibility: true
+loss_type: CE
+train_neg_sample_args: null
+checkpoint_dir: saved
