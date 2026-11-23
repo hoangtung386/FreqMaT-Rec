@@ -26,7 +26,7 @@ flowchart TD
 
 ## Options (`configs/model/freqmat.yaml`, validated by `FreqMaTConfig`)
 
-Defaults: hidden 256, inner 1024, 3 layers (about 9.3M parameters on Beauty, 12K items; the item embedding grows with the catalogue). All modules below are **on** by default: `freq_type: osc`, `use_local`, `mamba_flip`, `gate_granularity: branch`, `moe_shared`, `extrap`, `deep_sup_weight: 0.1`. Set a switch off for its `w/o X` ablation. `mamba_flip` needs `use_mamba`; `deep_sup_weight` is ignored with `loss_type: BPR`.
+Defaults: hidden 256, inner 1024, 3 layers (about 9.3M parameters on Beauty, 12K items; the item embedding grows with the catalogue). All modules below are **on** by default: `freq_type: osc`, `use_local`, `mamba_flip`, `gate_granularity: branch`, `moe_shared`, `extrap`, `deep_sup_weight: 0.1`, `pop_debias`, `pop_align_weight: 0.05`. Set a switch off for its `w/o X` ablation. `mamba_flip` needs `use_mamba`; `deep_sup_weight` is ignored with `loss_type: BPR`.
 
 | Option | Values | Meaning |
 |---|---|---|
@@ -41,6 +41,10 @@ Defaults: hidden 256, inner 1024, 3 layers (about 9.3M parameters on Beauty, 12K
 | `moe_shared`, `moe_shared_inner`, `moe_warmup_steps` | on (ramp 1000 steps) | always-on shared expert + routed experts, optional linear ramp of the routed part |
 | `extrap` | on | one-step causal extrapolation of the final state |
 | `deep_sup_weight` | `0.1` | weight of auxiliary CE on intermediate layers |
+| `loss_scope` | `last` | `all`: every position predicts its next item (HoloMambaRec-style); needs `mamba_flip: false` and `freq_type` in {none, osc} |
+| `pop_debias` | `true` | query minus learned λ·(popularity-weighted item centroid), λ = 0 at init (PDFlow-style); counts exclude each user's last two interactions |
+| `pop_align_weight` | `0.05` | squared distance between head and tail item embeddings of one sequence (PDFlow alignment); `0` = off |
+| `pop_head_frac` | `0.2` | share of items counted as head |
 | `loss_type` | `CE`, `BPR` | BPR needs negative sampling configured |
 
 ## Source map
