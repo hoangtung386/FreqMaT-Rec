@@ -38,3 +38,7 @@ moe_shared_inner: null     # null -> inner_size // 2
 moe_warmup_steps: 1000 # linear ramp of the routed part (training steps); 0 = off
 extrap: true         # one-step causal extrapolation of the final state
 deep_sup_weight: 0.1 # weight of auxiliary CE on intermediate layers
+loss_scope: last # last | all (all needs mamba_flip: false and freq_type none/osc: every branch causal)
+pop_debias: true # query minus learned lambda * popularity centroid (lambda = 0 at init)
+pop_align_weight: 0.05 # head-vs-tail item embedding alignment inside a sequence (0 = off)
+pop_head_frac: 0.2 # share of items counted as head

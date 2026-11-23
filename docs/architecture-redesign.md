@@ -1,6 +1,6 @@
 # Hướng dẫn thiết kế lại kiến trúc FreqMaT
 
-Tài liệu này là **bản thiết kế và hướng dẫn thi công**. Nó dựa trên [paper-ideas.md](paper-ideas.md) (đã duyệt) và trên việc rà soát codebase hiện tại. **Trạng thái thi công:** đã cài `osc`, `use_local`, `mamba_flip`, `gate_granularity`, `moe_shared`, `extrap`, `deep_sup_weight` (nay **mặc định BẬT**; cấu hình mặc định: hidden 256, inner 1024, 3 lớp, khoảng 9,3M tham số trên Beauty; tắt từng công tắc để làm ablation `w/o X`). **Chưa cài:** `pop_mode`/`pop_tau`, `loss_scope=all`, các module phân tích (mục 5). Mọi con số về hiệu năng là dự đoán; các con số về số tham số là tính toán hoặc đo trên bản mẫu (xem mục 9).
+Tài liệu này là **bản thiết kế và hướng dẫn thi công**. Nó dựa trên [paper-ideas.md](paper-ideas.md) (đã duyệt) và trên việc rà soát codebase hiện tại. **Trạng thái thi công:** đã cài `osc`, `use_local`, `mamba_flip`, `gate_granularity`, `moe_shared`, `extrap`, `deep_sup_weight`, `loss_scope=all` (mặc định `last`, vì `mamba_flip` không nhân quả), `pop_debias` và `pop_align_weight` (nay **mặc định BẬT**; cấu hình mặc định: hidden 256, inner 1024, 3 lớp, khoảng 9,3M tham số trên Beauty; tắt từng công tắc để làm ablation `w/o X`). **Chưa cài:** `pop_mode`/`pop_tau` (điều chỉnh logit), các module phân tích (mục 5). Mọi con số về hiệu năng là dự đoán; các con số về số tham số là tính toán hoặc đo trên bản mẫu (xem mục 9).
 
 ## 1. Mục tiêu và nguyên tắc
 
@@ -149,7 +149,7 @@ class OscFilter(nn.Module):
         w = self.omega[:, None]
         h = torch.fft.irfft(k / (k - m * w**2 + 1j * c * w), n=2 * self.max_len, dim=0)
         h = h.clone()
-        h[self.max_len:] = 0  # keep non-negative lags only
+        h[self.max_len :] = 0  # keep non-negative lags only
         return h
 
     def filter(self, x, basis=None):  # ``basis`` is accepted for interface parity with FreqFilter
@@ -206,6 +206,7 @@ def partial_flip_index(lengths, size, keep_last):
     n = (lengths - keep_last).clamp_min(0)[:, None]
     return torch.where(t < n, n - 1 - t, t)
 
+
 # trong layer:  y_flip = self.mamba_flip(x.gather(1, idx[..., None].expand_as(x))).gather(1, idx[..., None].expand_as(x))
 ```
 
@@ -232,6 +233,7 @@ class GatedFusion(nn.Module):
         per_branch = hidden if granularity == "channel" else 1
         self.gate = nn.Linear(hidden * n_branches, per_branch * (1 if n_branches == 2 else n_branches))
         self.last_gate = None
+
     # forward: n == 2 -> sigmoid như cũ; n >= 3 -> softmax trên trục nhánh; 'branch' thêm unsqueeze(-1)
 ```
 
@@ -437,7 +439,7 @@ Flow Matching và suy luận ODE, Semantic ID và tokenizer phẳng, holographic
 
 **Chưa kiểm chứng:**
 - hiệu quả về độ chính xác của bất kỳ module nào (chưa có kết quả hội tụ);
-- `SharedMoEFFN`, deep supervision, ngoại suy động lượng, `pop_mode`, `loss_scope=all` (mới là thiết kế, chưa có mã chạy);
+- `SharedMoEFFN`, deep supervision, ngoại suy động lượng, `loss_scope=all`, `pop_debias`, `pop_align_weight` (đã cài, chưa có số đo hội tụ), `pop_mode` (mới là thiết kế, chưa có mã chạy);
 - thứ tự `inter_feat` của RecBole cho việc đếm độ phổ biến;
 - bộ nhớ và tốc độ của cấu hình đầy đủ (4 nhánh, 2 hoặc nhiều lớp) trên Books và ML-20M;
 - việc `OscFilter` có hoạt động tốt hơn FMLP/BSARec hay không; HSR chỉ cho bằng chứng gián tiếp.

@@ -207,3 +207,49 @@ def test_shared_moe_step_counts_only_in_training():
 def test_invalid_new_config_rejected(bad):
     with pytest.raises(ValueError):
         FreqMaTConfig(**bad)
+
+
+class PopDataset(FakeDataset):
+    """Fake dataset with an interaction table ordered by time, users interleaved (3 users, last two are held out)."""
+
+    uid_field, iid_field = "user_id", "item_id"
+    inter_feat = {
+        "user_id": [1, 2, 1, 3, 2, 1, 2, 3, 2, 1, 3, 2],  # interleaved in time, as with order: TO
+        "item_id": [5, 5, 5, 9, 6, 7, 6, 9, 7, 9, 9, 8],
+    }
+
+
+def test_popularity_counts_exclude_held_out():
+    from freqmat.models.popularity import popularity_counts
+
+    c = popularity_counts(PopDataset(), N_ITEMS)
+    # kept: user1 [5,5], user2 [5,6,6], user3 [9]
+    assert c[5] == 3 and c[6] == 2 and c[9] == 1 and c[7] == 0 and c.sum() == 6
+
+
+def pop_model(**kw):
+    return FreqMaT(make_config(pop_debias=True, pop_align_weight=0.1, pop_head_frac=0.2, **kw), PopDataset())
+
+
+def test_pop_terms_train_and_identity_at_init():
+    torch.manual_seed(0)
+    m = pop_model()
+    assert m.pop_active
+    batch = make_batch()
+    m.eval()
+    q0 = m._debias(torch.randn(3, 32))
+    assert q0.shape == (3, 32)
+    m.train()
+    loss = m.calculate_loss(batch)
+    loss.backward()
+    assert m.pop_lambda.grad is not None
+    assert torch.isfinite(loss)
+
+
+def test_loss_scope_all_rejects_noncausal_and_matches_shape():
+    with pytest.raises(ValueError):
+        FreqMaT(make_config(loss_scope="all"), FakeDataset())  # learned filter + flip are not causal
+    m = FreqMaT(make_config(loss_scope="all", freq_type="osc", mamba_flip=False, use_local=True), FakeDataset())
+    loss = m.calculate_loss(make_batch())
+    loss.backward()
+    assert torch.isfinite(loss)

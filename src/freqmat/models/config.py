@@ -65,6 +65,10 @@ class FreqMaTConfig:
     deep_sup_weight: float = 0.1
     # training objective
     loss_type: str = "CE"
+    loss_scope: str = "last"  # "last": target at the last item only; "all": every position predicts its next item
+    pop_debias: bool = True  # logit query minus lambda * popularity centroid (lambda learned, 0 at init)
+    pop_align_weight: float = 0.05  # pull head-item and tail-item embeddings of one sequence together (0 = off)
+    pop_head_frac: float = 0.2  # share of items counted as head
 
     def __post_init__(self) -> None:
         _check("freq_type", self.freq_type, FREQ_TYPES)
@@ -73,6 +77,16 @@ class FreqMaTConfig:
         _check("ffn_type", self.ffn_type, FFN_TYPES)
         _check("loss_type", self.loss_type, ("CE", "BPR"))
         _check("gate_granularity", self.gate_granularity, GATE_GRANULARITIES)
+        _check("loss_scope", self.loss_scope, ("last", "all"))
+        if self.loss_scope == "all":
+            if self.loss_type != "CE":
+                raise ValueError("loss_scope=all needs loss_type=CE")
+            if self.flip_active or self.freq_kind not in ("none", "osc"):
+                raise ValueError(
+                    "loss_scope=all needs causal branches only: set mamba_flip=false and freq_type in {none, osc}"
+                )
+        if self.pop_align_weight < 0 or not 0 < self.pop_head_frac < 1:
+            raise ValueError("pop_align_weight must be >= 0 and pop_head_frac in (0, 1)")
         if self.deep_sup_weight < 0:
             raise ValueError("deep_sup_weight must be >= 0")
         if not 0 < self.osc_beta_init <= 1:
