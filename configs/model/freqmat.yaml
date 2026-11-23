@@ -1,0 +1,27 @@
+hidden_size: 64
+inner_size: 256
+n_layers: 2
+ffn_type: moe        # moe (default, replaces the FFN) | dense (for ablation)
+moe_experts: 8
+moe_topk: 2
+moe_inner: null      # null -> inner_size // moe_experts (param-matched with dense FFN)
+moe_aux_weight: 0.01 # load-balancing loss weight
+n_heads: 2
+hidden_dropout_prob: 0.3
+attn_dropout_prob: 0.1
+layer_norm_eps: 1.0e-12
+mamba_type: mamba3   # mamba3 (official Triton kernels) | mamba1 (pure-PyTorch scan, no extra deps)
+d_state: 32
+headdim: 32          # mamba3 only (hidden*expand must be divisible)
+chunk_size: 64       # mamba3 only
+d_conv: 4
+expand: 2
+attn_window: 0      # 0 = full causal; >0 = local sliding window
+# ablation switches
+use_freq: true
+freq_type: learned   # learned (FMLP) | bsa (BSARec rescaler) | both | gft (time-weighted graph Fourier)
+freq_position: pre   # pre (sequential) | branch (parallel branch, fused by the gate -> 3-way gate)
+freq_cutoff: 5       # c lowest frequencies kept (bsa/both/gft)
+gft_gamma: 0.5       # gft: edge weight (1+gap_days)^-gamma
+use_mamba: true
+use_attn: true
