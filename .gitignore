@@ -1,0 +1,47 @@
+# Environments
+.venv/
+venv/
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Data (large, re-creatable: see docs/datasets.md)
+data/raw/
+data/processed/
+*.part
+
+# Experiment artefacts. `outputs/` is where runs write; the other names are RecBole's defaults
+# (log/, log_tensorboard/, saved/) in case a script is run outside the runner.
+outputs/
+log/
+log_tensorboard/
+saved/
+*.pth
+*.pt
+*.ckpt
+events.out.tfevents.*
+wandb/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+.claude/settings.local.json
+
+# results/ is tracked: small, finalised tables and figures
+references/
+results/
