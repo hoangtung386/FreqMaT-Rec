@@ -1,8 +1,10 @@
 """Train and evaluate one model on one dataset, writing every artefact into a dedicated run directory."""
 
 import contextlib
+import gc
 import hashlib
 import json
+import logging
 import os
 import time
 from dataclasses import asdict, dataclass
@@ -14,6 +16,7 @@ import torch
 from freqmat import paths
 from freqmat.compat import allow_unsafe_torch_load
 from freqmat.config import build_config
+from freqmat.training.history import HistoryTrainer
 
 
 @dataclass
@@ -59,6 +62,26 @@ def working_directory(path: Path):
         os.chdir(previous)
 
 
+def release_gpu(tensorboard: Any = None) -> None:
+    """Close the run's loggers and TensorBoard writer, then return the cached GPU memory to the driver.
+
+    The caller must have dropped its own references to the model, optimizer and data loaders first; checkpoints are
+    already on disk. Handlers are removed because RecBole attaches them to the root logger, and a second run in the
+    same process would otherwise keep writing into the first run's log file.
+    """
+    if tensorboard is not None:
+        tensorboard.close()
+    root = logging.getLogger()
+    for handler in root.handlers[:]:
+        handler.close()
+        root.removeHandler(handler)
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+
+
 def train_and_eval(
     model: str,
     dataset: str,
@@ -66,10 +89,10 @@ def train_and_eval(
     experiment: str = "adhoc",
     show_progress: bool = True,
 ) -> RunResult:
-    """Fit ``model`` on ``dataset`` (leave-one-out, full ranking), evaluate the best checkpoint on test."""
+    """Fit ``model`` on ``dataset`` (temporal 80:10:10 split, full ranking), evaluate the best checkpoint on test."""
     allow_unsafe_torch_load()
     from recbole.data import create_dataset, data_preparation
-    from recbole.utils import get_trainer, init_logger, init_seed
+    from recbole.utils import init_logger, init_seed
 
     from freqmat.models import resolve_model
 
@@ -78,23 +101,33 @@ def train_and_eval(
     config = build_config(model, dataset, {**overrides, "checkpoint_dir": str(run_dir)})
     (run_dir / "config.json").write_text(json.dumps(config.final_config_dict, indent=2, default=str))
 
-    with working_directory(run_dir):
-        init_seed(config["seed"], config["reproducibility"])
-        init_logger(config)
-        data = create_dataset(config)
-        train, valid, test = data_preparation(config, data)
-        net = resolve_model(model)(config, train.dataset).to(config["device"])
-        trainer = get_trainer(config["MODEL_TYPE"], config["model"])(config, net)
-        _, valid_result = trainer.fit(train, valid, saved=True, show_progress=show_progress)
-        test_result = trainer.evaluate(test, load_best_model=True, show_progress=show_progress)
+    peak_gpu_gb = params = 0
+    trainer = None
+    try:
+        with working_directory(run_dir):
+            init_seed(config["seed"], config["reproducibility"])
+            init_logger(config)
+            data = create_dataset(config)
+            train, valid, test = data_preparation(config, data)
+            net = resolve_model(model)(config, train.dataset).to(config["device"])
+            params = sum(p.numel() for p in net.parameters())
+            trainer = HistoryTrainer(config, net, run_dir / "history.csv")
+            _, valid_result = trainer.fit(train, valid, saved=True, show_progress=show_progress)
+            test_result = trainer.evaluate(test, load_best_model=True, show_progress=show_progress)
+            checkpoint = Path(trainer.saved_model_file)
+            peak_gpu_gb = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
+    finally:
+        writer = getattr(trainer, "tensorboard", None)
+        trainer = net = train = valid = test = data = None  # drop every GPU reference before emptying the cache
+        release_gpu(writer)
 
     result = RunResult(
         run_dir=run_dir,
-        checkpoint=Path(trainer.saved_model_file),
+        checkpoint=checkpoint,
         valid=dict(valid_result),
         test=dict(test_result),
-        params=sum(p.numel() for p in net.parameters()),
-        peak_gpu_gb=torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0,
+        params=params,
+        peak_gpu_gb=peak_gpu_gb,
     )
     (run_dir / "metrics.json").write_text(json.dumps(result.to_json(), indent=2))
     return result

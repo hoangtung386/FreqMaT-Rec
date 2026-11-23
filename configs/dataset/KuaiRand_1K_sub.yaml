@@ -1,0 +1,3 @@
+# last 200 clicks per user
+MAX_ITEM_LIST_LENGTH: 200
+train_batch_size: 128 # length-200 sequences: batch 256 does not fit in 10 GB

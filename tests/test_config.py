@@ -20,9 +20,9 @@ def test_parse_overrides_rejects_malformed():
 
 
 def test_config_layers_are_ordered_and_optional():
-    files = config_files("FreqMaT", "LastFM")
+    files = config_files("FreqMaT", "LastFM_sub")
     assert [f.parent.name for f in files] == ["configs", "model", "dataset"]
-    assert [f.name for f in config_files("SASRec", "ml-1m")] == ["protocol.yaml"]
+    assert [f.name for f in config_files("SASRec", "Amazon_Beauty")] == ["protocol.yaml"]
 
 
 def test_paths_point_into_the_repository():

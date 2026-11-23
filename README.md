@@ -2,9 +2,10 @@
 
 **Frequency-Aware Mamba-Transformer for Sequential Recommendation.**
 
-Each layer: `FreqFilter (denoise) -> [Mamba-3 || RoPE-Attention] -> GatedFusion -> MoE (8 experts, top-2, replaces FFN)`.
-Use `-s ffn_type=dense` for the plain-FFN ablation, `-s freq_position=branch` to make the frequency filter a
-parallel branch (3-way gate). See [docs/architecture.md](docs/architecture.md).
+Each layer: `OscFilter (causal denoise) -> [Mamba-3 || flipped Mamba || RoPE-Attention || local GRU] -> GatedFusion ->
+shared-expert MoE`, with one-step extrapolation of the final state, deep supervision and popularity debiasing. Every new
+module is on by default (about 9.2M parameters on Beauty) and has a switch for its `w/o X` ablation, e.g.
+`-s use_local=false`, `-s moe_shared=false`, `-s freq_type=learned`. See [docs/architecture.md](docs/architecture.md).
 
 | Problem | Component |
 |---|---|
@@ -38,28 +39,70 @@ This installs Mamba-3 SISO (Triton kernels, no `nvcc` needed). Tested with mamba
 
 ## Run
 
+Datasets must exist under `data/processed/` first (see [docs/datasets.md](docs/datasets.md)). Names for `-d`:
+`Amazon_Beauty`, `Amazon_Toys_and_Games`, `Amazon_Video_Games`, `Amazon_Sports_and_Outdoors`, `MassiveSTEPS_NewYork`,
+`Gowalla_CA`, `Gowalla_TX`, `ml-1m`, and the reduced sets `KuaiRand_1K_sub`, `LastFM_sub`, `ml-20m_sub`, `Yelp_sub`,
+`Amazon_Books_sub`.
+
+**1. Build the reduced datasets (once)** — the full LastFM, ML-20M, Books, Yelp and KuaiRand are too large to train on:
+
 ```bash
-.venv/bin/python scripts/train.py -m SASRec  -d Amazon_Beauty         # baseline (RecBole)
-.venv/bin/python scripts/train.py -m FreqMaT -d Amazon_Beauty
-.venv/bin/python scripts/train.py -m FreqMaT -d Amazon_Beauty -s use_freq=false     # ablation switches
+.venv/bin/python scripts/make_subsets.py
+```
+
+**2. Check that a dataset fits in memory and estimate its epoch time** (a few real training and evaluation steps):
+
+```bash
+.venv/bin/python scripts/check_data.py -d Amazon_Beauty
+```
+
+**3. Train one dataset:**
+
+```bash
+.venv/bin/python scripts/train.py -m FreqMaT -d Amazon_Beauty                       # defaults: 200 epochs, early stopping 10
+.venv/bin/python scripts/train.py -m FreqMaT -d Amazon_Beauty -s use_local=false    # ablation switch
+.venv/bin/python scripts/train.py -m SASRec  -d Amazon_Beauty                       # RecBole baseline
+```
+
+**4. Train every dataset, 200 epochs each** (one fresh process per dataset, so the GPU is emptied and the model
+re-initialised between datasets; an out-of-memory failure is retried once with half the batch size):
+
+```bash
+nohup .venv/bin/python scripts/run_all.py > run_all.log 2>&1 &                      # all 13, 200 epochs, no early stopping
+.venv/bin/python scripts/run_all.py -d Amazon_Beauty ml-1m --epochs 200 --patience 10   # subset, with early stopping
+```
+
+Summary table: `results/full_200.tsv`. Progress: `tail -f run_all.log`, or `outputs/full_200/<run>/history.csv`.
+
+**5. Plot learning curves for the paper:**
+
+```bash
+.venv/bin/python scripts/plot_history.py outputs/full_200/* --out figures
+```
+
+**6. Ablations and analysis:**
+
+```bash
 .venv/bin/python scripts/run_ablation.py --epochs 1 --seeds 2024 --only freq_bsa    # quick grid check
+.venv/bin/python scripts/run_ablation.py --grid configs/ablation/freqmat_v2_grid.yaml
 .venv/bin/python scripts/analyze_oversmoothing.py --ckpt a=outputs/.../x.pth b=outputs/.../y.pth
 ```
 
-Every run writes `outputs/<experiment>/<timestamp>_<model>_<dataset>_<hash>/` containing `config.json`,
-`metrics.json`, the best checkpoint, and RecBole `log/` + `log_tensorboard/`.
-Protocol (`configs/protocol.yaml`): leave-one-out, **full-ranking**, HR/NDCG/Recall@{5,10}, 5-core.
+Every run writes `outputs/<experiment>/<timestamp>_<model>_<dataset>_<hash>/` containing `config.json`, `metrics.json`,
+`history.csv` (one row per epoch), the best checkpoint, and RecBole `log/` + `log_tensorboard/`.
+Protocol (`configs/protocol.yaml`): global temporal split 80:10:10 (train / validation / test), **full-ranking**,
+HR/NDCG/Recall@{5,10}, 5-core. The best epoch is chosen on validation NDCG@10; test is evaluated once on that checkpoint.
 
 ## Layout
 
 ```
 src/freqmat/
-  models/        FreqMaT (RecBole model), FreqMaTLayer, FreqMaTConfig, modules/ (frequency, mamba, attention, fusion, ffn, graph_fourier)
+  models/        FreqMaT (RecBole model), FreqMaTLayer, FreqMaTConfig, modules/ (oscillator, frequency, mamba, local, attention, fusion, ffn, graph_fourier)
   data/          raw -> .inter converters (registry), downloads
-  training/      train_and_eval() -> RunResult
+  training/      train_and_eval() -> RunResult, HistoryTrainer (history.csv)
   experiments/   ablation grid runner
   analysis/      oversmoothing analysis
-scripts/         thin CLIs: train, prepare_data, download_raw, run_ablation, analyze_oversmoothing
+scripts/         thin CLIs: train, run_all, check_data, make_subsets, plot_history, prepare_data, download_raw, run_ablation, analyze_oversmoothing
 configs/         protocol.yaml, model/, dataset/ (per-dataset overrides), ablation/
 tests/           pytest suite (CPU; Mamba-3 tests need CUDA)
 data/            raw/<dataset>/ and processed/<Name>/<Name>.inter   (git-ignored)

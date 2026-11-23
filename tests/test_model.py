@@ -210,21 +210,17 @@ def test_invalid_new_config_rejected(bad):
 
 
 class PopDataset(FakeDataset):
-    """Fake dataset with an interaction table ordered by time, users interleaved (3 users, last two are held out)."""
+    """Fake training split: one row per training sample, ``item_id`` is the sample's target."""
 
     uid_field, iid_field = "user_id", "item_id"
-    inter_feat = {
-        "user_id": [1, 2, 1, 3, 2, 1, 2, 3, 2, 1, 3, 2],  # interleaved in time, as with order: TO
-        "item_id": [5, 5, 5, 9, 6, 7, 6, 9, 7, 9, 9, 8],
-    }
+    inter_feat = {"user_id": [1, 2, 1, 3, 2], "item_id": [5, 5, 5, 9, 6]}
 
 
-def test_popularity_counts_exclude_held_out():
+def test_popularity_counts_are_target_counts_of_the_training_split():
     from freqmat.models.popularity import popularity_counts
 
     c = popularity_counts(PopDataset(), N_ITEMS)
-    # kept: user1 [5,5], user2 [5,6,6], user3 [9]
-    assert c[5] == 3 and c[6] == 2 and c[9] == 1 and c[7] == 0 and c.sum() == 6
+    assert c[5] == 3 and c[6] == 1 and c[9] == 1 and c[7] == 0 and c.sum() == 5
 
 
 def pop_model(**kw):

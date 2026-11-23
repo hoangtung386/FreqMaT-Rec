@@ -1,30 +1,20 @@
 """Item popularity statistics for the debiasing terms of the training objective."""
 
-import numpy as np
 import torch
 
 
-def popularity_counts(dataset, n_items: int, hold_out: int = 2) -> torch.Tensor | None:
-    """Per-item interaction counts from the training part of ``dataset`` ``(n_items,)``.
+def popularity_counts(dataset, n_items: int) -> torch.Tensor | None:
+    """Per-item counts of the training targets in ``dataset`` ``(n_items,)``.
 
-    RecBole's ``train.dataset`` still holds every interaction (the leave-one-out split only slices indices), ordered
-    by time (``order: TO``). The last ``hold_out`` interactions of each user are the validation and test
-    targets, so they are excluded. Returns ``None`` when the dataset exposes no interaction table.
+    ``dataset`` is RecBole's training split (``train_data.dataset``): one row per training sample, whose ``item_id`` is
+    that sample's target. Validation and test targets are not in it, so the counts cannot leak them. Returns ``None``
+    when the dataset exposes no interaction table.
     """
     inter = getattr(dataset, "inter_feat", None)
     if inter is None:
         return None
-    uid = np.asarray(inter[dataset.uid_field])
-    iid = np.asarray(inter[dataset.iid_field])
-    # `order: TO` sorts globally by time; a stable sort by user keeps each user's interactions in time order
-    order = np.argsort(uid, kind="stable")
-    uid, iid = uid[order], iid[order]
-    # position of each interaction counted from the end of its user's history (1 = last)
-    boundary = np.flatnonzero(np.diff(uid, append=uid[-1] + 1) != 0)
-    last_pos = np.repeat(boundary, np.diff(np.concatenate(([-1], boundary))))
-    from_end = last_pos - np.arange(len(uid)) + 1
-    keep = from_end > hold_out
-    return torch.bincount(torch.as_tensor(iid[keep]), minlength=n_items).float()
+    iid = torch.as_tensor(inter[dataset.iid_field]).long()
+    return torch.bincount(iid, minlength=n_items).float()
 
 
 def head_mask(counts: torch.Tensor, head_frac: float) -> torch.Tensor:

@@ -23,6 +23,28 @@ Số liệu là **trước** khi lọc 5-core của RecBole (`configs/protocol.y
 | Amazon-Books | `Amazon_Books` | 8.898.041 | 603.668 | 367.982 | Đã có |
 | Yelp | `Yelp` | 6.990.280 | — | — | Đã có (toàn bộ review, xem ghi chú) |
 
+## Bộ rút gọn để huấn luyện
+
+RecBole biến mọi tiền tố của lịch sử một user thành một mẫu huấn luyện, nên thời gian mỗi epoch tỉ lệ với số tương tác, và bảng 20 triệu dòng cần hàng chục GB RAM chỉ để dựng mẫu. Năm bộ lớn hoặc không hợp lý ở dạng gốc được rút gọn bằng `python scripts/make_subsets.py` (cấu hình trong `src/freqmat/data/reduce.py`, hạt giống 2024, bản gốc không bị sửa). Thứ tự áp dụng: gộp các lần lặp liên tiếp cùng item, lọc 5-core, lấy mẫu ngẫu nhiên user, giữ N tương tác gần nhất của mỗi user, lọc 5-core lần nữa.
+
+| Bộ rút gọn | Từ | Cách rút gọn | Tương tác | User | Item |
+|---|---|---|---|---|---|
+| `ml-20m_sub` | `ml-20m` | 8.000 user, 100 tương tác gần nhất | 528.031 | 8.000 | 6.481 |
+| `Amazon_Books_sub` | `Amazon_Books` | 100.000 user | 860.869 | 60.351 | 62.984 |
+| `Yelp_sub` | `Yelp` | 50.000 user | 603.571 | 40.271 | 35.447 |
+| `KuaiRand_1K_sub` | `KuaiRand_1K` | 200 lượt click gần nhất | 91.962 | 998 | 10.513 |
+| `LastFM_sub` | `LastFM` | gộp lần nghe lặp liên tiếp, 200 sự kiện gần nhất | 159.890 | 987 | 7.063 |
+
+Dùng bộ rút gọn khi huấn luyện, và ghi cách rút gọn trong bài báo. `LastFM` gốc (95% cặp user-item lặp, 19 triệu dòng) và `ml-20m`, `Amazon_Books`, `Yelp` gốc không dùng để huấn luyện trực tiếp. Số tương tác trong bảng là số sau lọc, trước khi RecBole bỏ hai tương tác cuối mỗi user cho valid/test.
+
+## Kiểm tra bộ dữ liệu có huấn luyện được không
+
+```bash
+.venv/bin/python scripts/check_data.py -d Amazon_Beauty --steps 30
+```
+
+Script nạp dataset qua RecBole, chạy các bước huấn luyện thật với cấu hình mặc định và in số user/item, số tham số, thời gian mỗi bước, thời gian ước tính mỗi epoch, bộ nhớ GPU và RAM đỉnh.
+
 ## Yelp (tải tay, đã xong)
 
 Yelp đã được tải và chuyển đổi. Phần dưới ghi lại cách làm lại nếu cần. Yelp yêu cầu điền form và đồng ý điều khoản nên không tải tự động được.
@@ -47,7 +69,7 @@ Tên file hoặc cấu trúc trang tải của Yelp có thể thay đổi theo t
 
 ```bash
 .venv/bin/python scripts/train.py -m FreqMaT -d Amazon_Video_Games
-.venv/bin/python scripts/train.py -m FreqMaT -d LastFM   # MAX_ITEM_LIST_LENGTH=200 đã nằm trong configs/dataset/LastFM.yaml
+.venv/bin/python scripts/train.py -m FreqMaT -d LastFM_sub   # độ dài 200 và batch 128 nằm trong configs/dataset/LastFM_sub.yaml
 ```
 
 ## Ghi chú quan trọng (đọc trước khi viết bài báo)

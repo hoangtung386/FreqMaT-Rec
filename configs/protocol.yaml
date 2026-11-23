@@ -1,4 +1,4 @@
-# Shared protocol: leave-one-out, FULL-ranking (no sampled metrics)
+# Shared protocol: global temporal split 80:10:10, FULL-ranking (no sampled metrics)
 data_path: data
 load_col:
   inter: [user_id, item_id, rating, timestamp]
@@ -10,7 +10,10 @@ item_inter_num_interval: "[5,inf)"
 MAX_ITEM_LIST_LENGTH: 50
 benchmark_filename: null
 eval_args:
-  split: {LS: valid_and_test}
+  # all interactions sorted by time: the first 80% train, the next 10% validation, the last 10% test.
+  # Every sample's history is older than its target, and no training target is newer than a validation target.
+  split: {RS: [0.8, 0.1, 0.1]}
+  group_by: none
   order: TO
   mode: full
 repeatable: true
