@@ -29,10 +29,10 @@ uv pip install --python .venv/bin/python --index-strategy unsafe-best-match \
 (pure-PyTorch scan, no extra dependencies).
 
 ```bash
-uv pip install --python .venv/bin/python -e ".[mamba]"
-uv pip install --python .venv/bin/python --no-build-isolation git+https://github.com/state-spaces/mamba.git
-uv pip uninstall --python .venv/bin/python tilelang   # only needed for MIMO; its import breaks Mamba-3 SISO here
+./scripts/install_mamba.sh
 ```
+Re-run it after every `uv sync` / environment rebuild (uv removes packages that are not in `uv.lock`). The script pins the
+commit, keeps torch/triton untouched (`--no-deps`) and removes `tilelang` (MIMO only; its import breaks Mamba-3 SISO here).
 
 This installs Mamba-3 SISO (Triton kernels, no `nvcc` needed). Tested with mamba-ssm 2.3.2.post1 (git commit `e9594ce`), torch 2.14.1+cu130, triton 3.8.0.
 
@@ -63,7 +63,7 @@ scripts/         thin CLIs: train, prepare_data, download_raw, run_ablation, ana
 configs/         protocol.yaml, model/, dataset/ (per-dataset overrides), ablation/
 tests/           pytest suite (CPU; Mamba-3 tests need CUDA)
 data/            raw/<dataset>/ and processed/<Name>/<Name>.inter   (git-ignored)
-outputs/         run artefacts (git-ignored); outputs/legacy = runs from before the refactor
+outputs/         run artefacts (git-ignored)
 results/         tracked result tables / figures
 docs/            architecture, datasets, experiments, references
 ```
@@ -84,10 +84,7 @@ import it in `data/__init__.py`. New models: register in `freqmat.models.CUSTOM_
 ## Known limitations
 - `MoEFFN` evaluates all experts densely (cost grows with the number of experts); `RoPEAttention` rebuilds RoPE
   tables and the causal mask every forward.
-- The pre-refactor ablation table (`results/legacy_ablation_Amazon_Beauty.tsv`) is single-seed and its differences
-  (~0.001 NDCG) are within seed noise; re-run `scripts/run_ablation.py` (3 seeds) before drawing conclusions.
-- Old command `python run.py ...` is now `python scripts/train.py ...`; old runs live in `outputs/legacy/`.
 
 ## TODO
 - Baselines: GRU4Rec, BERT4Rec, FMLP-Rec, BSARec, Mamba4Rec, LRURec (register in `freqmat.models.CUSTOM_MODELS`)
-- Datasets: Sports, Toys, Yelp; analysis by sequence length / long-tail; params & speed
+- Analysis by sequence length / long-tail; params & speed

@@ -5,7 +5,7 @@ File thô nằm ở `data/raw/<dataset>/`, kết quả ở `data/processed/`. Sc
 
 ## Trạng thái
 
-Số liệu là **trước** khi lọc 5-core của RecBole (`configs/base.yaml`), nên số user/item thực tế khi train sẽ ít hơn.
+Số liệu là **trước** khi lọc 5-core của RecBole (`configs/protocol.yaml`), nên số user/item thực tế khi train sẽ ít hơn.
 
 | Tên trong danh sách của bạn | Tên thư mục trong `data/` | Tương tác | User | Item | Trạng thái |
 |---|---|---|---|---|---|
@@ -20,12 +20,12 @@ Số liệu là **trước** khi lọc 5-core của RecBole (`configs/base.yaml`
 | Check-in California | `Gowalla_CA` | 736.203 | 16.599 | 115.414 | Đã có (xấp xỉ, xem ghi chú) |
 | Check-in Texas | `Gowalla_TX` | 943.102 | 17.245 | 121.145 | Đã có (xấp xỉ, xem ghi chú) |
 | MovieLens-20M | `ml-20m` | 20.000.263 | 138.493 | 26.744 | Đã có |
-| Amazon-Books | `Amazon_Books` | ~8,9 triệu | — | — | Đã tải (3,2 GB), chưa chuyển đổi (`prepare_data.py --datasets Books`) |
-| Yelp | `Yelp` | — | — | — | **Bạn cần tải tay** (xem bên dưới) |
+| Amazon-Books | `Amazon_Books` | 8.898.041 | 603.668 | 367.982 | Đã có |
+| Yelp | `Yelp` | 6.990.280 | — | — | Đã có (toàn bộ review, xem ghi chú) |
 
-## Bạn cần tải tay: Yelp
+## Yelp (tải tay, đã xong)
 
-Yelp yêu cầu điền form và đồng ý điều khoản nên không tải tự động được.
+Yelp đã được tải và chuyển đổi. Phần dưới ghi lại cách làm lại nếu cần. Yelp yêu cầu điền form và đồng ý điều khoản nên không tải tự động được.
 
 1. Vào https://www.yelp.com/dataset
 2. Bấm **Download JSON** (hoặc trang https://www.yelp.com/dataset/download), điền họ tên, email và chấp nhận điều khoản (chỉ dùng phi thương mại/học thuật).
@@ -39,7 +39,7 @@ Yelp yêu cầu điền form và đồng ý điều khoản nên không tải t�
    ```bash
    .venv/bin/python scripts/prepare_data.py --datasets Yelp
    ```
-   Lệnh này đọc file theo từng khối nên tốn ít RAM hơn bản cũ. Kết quả là `data/Yelp/Yelp.inter`.
+   Lệnh này đọc file theo từng khối nên tốn ít RAM hơn bản cũ. Kết quả là `data/processed/Yelp/Yelp.inter`.
 
 Tên file hoặc cấu trúc trang tải của Yelp có thể thay đổi theo từng phiên bản. Nếu file khác tên, hãy báo lại để chỉnh converter.
 
@@ -61,5 +61,6 @@ Tên file hoặc cấu trúc trang tải của Yelp có thể thay đổi theo t
 - **KuaiRand-1K:** interaction là các video có `is_click = 1` trong hai log chuẩn. Log phơi bày ngẫu nhiên (`log_random_*`) bị loại vì nó dùng cho mục đích gỡ thiên lệch. Bộ này chỉ có 1.000 user nhưng rất nhiều video, nên sau lọc 5-core số item sẽ giảm mạnh.
 - **LastFM-1K:** item là nghệ sĩ (không phải bài hát), timestamp là thời điểm nghe. Chuỗi rất dài nên nên tăng `MAX_ITEM_LIST_LENGTH`.
 - **"Amazon-Games" trong danh sách bị mơ hồ:** tôi hiểu là Video Games (đã tải) vì Toys & Games đã có là "Toys". Nếu bạn muốn khác, hãy báo lại.
+- **Yelp dùng toàn bộ review**, không lọc từ 2019-01-01 như bài BSARec, nên chưa so sánh trực tiếp được với bảng số của họ. **LastFM** là LastFM-1K, không phải HetRec-2011 mà BSARec dùng.
 - **Amazon-Books và ML-20M rất lớn** (8,9 triệu và 20 triệu tương tác). Với GPU 10 GB, bảng embedding và logits có thể gây hết bộ nhớ. Tôi chưa đo trên hai bộ này, nên có thể phải giảm `train_batch_size`.
 - **Giấy phép:** Amazon 2014, ML-1M/20M, Gowalla và LastFM chỉ dành cho nghiên cứu phi thương mại. KuaiRand và Yelp có điều khoản riêng, cần đọc khi công bố.

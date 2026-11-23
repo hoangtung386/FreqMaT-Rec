@@ -20,15 +20,13 @@ Artefacts go to `outputs/my_experiment/<timestamp>_FreqMaT_Amazon_Beauty_<hash>/
 Outputs: `results/ablation_<dataset>.tsv` (mean/std per variant) and `results/ablation_<dataset>_runs.tsv` (per run,
 with status and relative `run_dir`). A failing run is recorded and the grid continues.
 
-`results/legacy_ablation_Amazon_Beauty.tsv` is the single-seed result from before the refactor (checkpoints under
-`outputs/legacy/saved/`); `dense_ffn` and `attn_only` are missing there and differences between variants (~0.001 NDCG)
-are within seed noise, so re-run with several seeds before drawing conclusions.
+Differences between variants are typically ~0.001 NDCG, i.e. within seed noise: use several seeds before drawing conclusions.
 
 ## Oversmoothing
 ```bash
 .venv/bin/python scripts/analyze_oversmoothing.py --ckpt attn_only=<ckpt> freqmat=<ckpt>
 ```
-Writes `results/oversmoothing.{json,png}`. Legacy checkpoints (`outputs/legacy/saved/`) still load.
+Writes `results/oversmoothing.{json,png}`.
 
 ## Baselines (TODO)
 GRU4Rec, BERT4Rec, FMLP-Rec, BSARec, Mamba4Rec, LRURec: add as modules under `src/freqmat/models/` and register in
