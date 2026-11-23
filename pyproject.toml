@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "freqmat-rec"
+version = "0.2.0"
+description = "FreqMaT-Rec: Frequency-Aware Mamba-Transformer for Sequential Recommendation"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+  # Versions below are the ones the project was developed and tested with.
+  # torch is the CUDA 13.0 build (2.14.1+cu130); use the matching PyTorch index.
+  "torch==2.14.1",
+  "numpy==1.26.4",
+  "scipy==1.12.0",
+  "pandas==2.0.3",
+  "pyyaml==6.0.4",
+  "recbole==1.2.0",
+  # RecBole 1.2 runtime requirements
+  "scikit-learn==1.7.2",
+  "tqdm==4.70.1",
+  "colorlog==4.7.2",
+  "colorama==0.4.4",
+  "tensorboard==2.21.0",
+  "texttable==1.7.3",
+  "ray[tune]==2.9.3",
+  "kmeans_pytorch==0.3",
+  "thop==0.1.1.post2209072238",
+]
+
+[project.optional-dependencies]
+# Mamba-3 kernels (CUDA only). mamba-ssm is built from source against the installed torch (see README):
+#   pip install --no-build-isolation git+https://github.com/state-spaces/mamba.git@e9594ce1c732d97440f0332fdc43170a2294dbfa
+# (resulting version 2.3.2.post1). This extra installs its build prerequisites.
+mamba = ["einops==0.8.2", "packaging==26.3", "ninja==1.13.2", "setuptools>=68", "wheel==0.48.0"]
+analysis = ["matplotlib==3.10.9"]
+dev = [
+  "pytest==9.2.0",
+  "ruff==0.17.6",
+  "matplotlib==3.10.9",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["cuda: needs a CUDA device (Mamba-3 Triton kernels); skipped otherwise"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+extend-exclude = [".venv", "data", "outputs"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["N803", "N806", "N812"]  # math-style names (A, B, C, D, L) are intentional
