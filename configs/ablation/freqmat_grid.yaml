@@ -1,0 +1,20 @@
+# FreqMaT ablation grid: every variant is a set of config overrides applied on top of the defaults.
+dataset: Amazon_Beauty
+epochs: 200
+seeds: [2024, 2025, 2026]
+variants:
+  # frequency module: none vs learned (FMLP) vs rescaler (BSA) vs both vs graph-Fourier
+  no_freq: {freq_type: none}
+  freq_learned: {freq_type: learned}
+  freq_bsa: {freq_type: bsa}
+  freq_both: {freq_type: both}
+  freq_gft: {freq_type: gft}
+  # frequency as a parallel branch + 3-way gate
+  branch_learned: {freq_type: learned, freq_position: branch}
+  branch_bsa: {freq_type: bsa, freq_position: branch}
+  branch_gft: {freq_type: gft, freq_position: branch}
+  # other components
+  no_mamba: {use_mamba: false}
+  no_attn: {use_attn: false}
+  dense_ffn: {ffn_type: dense}
+  attn_only: {use_freq: false, use_mamba: false}  # SASRec-like reference for the oversmoothing study
