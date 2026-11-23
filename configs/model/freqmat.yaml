@@ -1,6 +1,6 @@
-hidden_size: 64
-inner_size: 256
-n_layers: 2
+hidden_size: 256
+inner_size: 1024
+n_layers: 3
 ffn_type: moe        # moe (default, replaces the FFN) | dense (for ablation)
 moe_experts: 8
 moe_topk: 2
@@ -19,9 +19,22 @@ expand: 2
 attn_window: 0      # 0 = full causal; >0 = local sliding window
 # ablation switches
 use_freq: true
-freq_type: learned   # learned (FMLP) | bsa (BSARec rescaler) | both | gft (time-weighted graph Fourier)
+freq_type: osc       # learned (FMLP) | bsa (BSARec rescaler) | both | gft (time-weighted graph Fourier) | osc (causal damped oscillator)
 freq_position: pre   # pre (sequential) | branch (parallel branch, fused by the gate -> 3-way gate)
 freq_cutoff: 5       # c lowest frequencies kept (bsa/both/gft)
 gft_gamma: 0.5       # gft: edge weight (1+gap_days)^-gamma
 use_mamba: true
 use_attn: true
+osc_hf: true         # osc: add the beta^2 (x - LP(x)) high-frequency term
+osc_beta_init: 0.5   # osc: initial beta^2 (1.0 would give zero gradient to m, c, k)
+use_local: true      # extra causal conv + GRU branch
+local_kernel: 4
+mamba_flip: true     # extra Mamba on the partially flipped sequence
+flip_keep_last: 5
+flip_share_weights: false
+gate_granularity: branch  # channel | branch (scalar gate per branch: far fewer params with 4+ branches)
+moe_shared: true     # always-on shared expert + routed experts
+moe_shared_inner: null     # null -> inner_size // 2
+moe_warmup_steps: 1000 # linear ramp of the routed part (training steps); 0 = off
+extrap: true         # one-step causal extrapolation of the final state
+deep_sup_weight: 0.1 # weight of auxiliary CE on intermediate layers

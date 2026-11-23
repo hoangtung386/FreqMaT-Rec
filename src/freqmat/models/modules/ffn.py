@@ -50,3 +50,37 @@ class MoEFFN(nn.Module):
         h = F.gelu(torch.einsum("bld,edi->blei", x, self.w1) + self.b1)
         y = torch.einsum("blei,eih->bleh", self.drop(h), self.w2) + self.b2
         return self.drop((y * gates.unsqueeze(-1).to(y.dtype)).sum(2))
+
+
+class SharedMoEFFN(nn.Module):
+    """``y = shared(x) + sigmoid(a) * ramp * routed(x)``: an always-on dense expert plus routed experts.
+
+    ``ramp`` grows linearly from 0 to 1 over ``warmup_steps`` training steps (0 disables the ramp).
+    """
+
+    def __init__(
+        self,
+        hidden: int,
+        shared_inner: int,
+        expert_inner: int,
+        n_experts: int,
+        top_k: int,
+        dropout: float,
+        warmup_steps: int = 0,
+    ):
+        super().__init__()
+        self.shared = FFN(hidden, shared_inner, dropout)
+        self.routed = MoEFFN(hidden, expert_inner, n_experts, top_k, dropout)
+        self.alpha_raw = nn.Parameter(torch.zeros(()))
+        self.warmup = warmup_steps
+        self.register_buffer("step", torch.zeros((), dtype=torch.long))
+
+    @property
+    def aux_loss(self) -> torch.Tensor:
+        return self.routed.aux_loss
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        if self.training:
+            self.step += 1
+        ramp = 1.0 if self.warmup <= 0 else (self.step.float() / self.warmup).clamp(max=1.0)
+        return self.shared(x) + torch.sigmoid(self.alpha_raw) * ramp * self.routed(x, mask)

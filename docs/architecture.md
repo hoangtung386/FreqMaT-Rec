@@ -26,13 +26,21 @@ flowchart TD
 
 ## Options (`configs/model/freqmat.yaml`, validated by `FreqMaTConfig`)
 
+Defaults: hidden 256, inner 1024, 3 layers (about 9.3M parameters on Beauty, 12K items; the item embedding grows with the catalogue). All modules below are **on** by default: `freq_type: osc`, `use_local`, `mamba_flip`, `gate_granularity: branch`, `moe_shared`, `extrap`, `deep_sup_weight: 0.1`. Set a switch off for its `w/o X` ablation. `mamba_flip` needs `use_mamba`; `deep_sup_weight` is ignored with `loss_type: BPR`.
+
 | Option | Values | Meaning |
 |---|---|---|
-| `use_freq`, `freq_type` | `none`, `learned`, `bsa`, `both`, `gft` | FMLP-style filter / BSARec rescaler / cascade / time-weighted graph Fourier |
+| `use_freq`, `freq_type` | `none`, `learned`, `bsa`, `both`, `gft`, `osc` | FMLP-style filter / BSARec rescaler / cascade / time-weighted graph Fourier / causal damped oscillator (`osc_hf`, `osc_beta_init`) |
 | `freq_position` | `pre`, `branch` | sequential denoiser vs. parallel branch fused by the gate |
 | `use_mamba`, `mamba_type` | `mamba1`, `mamba3` | SSM branch; `mamba3` needs CUDA + `mamba-ssm` |
 | `use_attn`, `attn_window` | `0` = full causal | attention branch |
 | `ffn_type` | `moe`, `dense` | MoE replaces the FFN (param-matched by default) |
+| `use_local`, `local_kernel` | on | extra causal conv + GRU branch |
+| `mamba_flip`, `flip_keep_last`, `flip_share_weights` | on, off | extra Mamba on the partially flipped sequence (flipped by true length) |
+| `gate_granularity` | `channel`, `branch` | per-channel gate or one scalar per branch (far fewer parameters with 4+ branches) |
+| `moe_shared`, `moe_shared_inner`, `moe_warmup_steps` | on (ramp 1000 steps) | always-on shared expert + routed experts, optional linear ramp of the routed part |
+| `extrap` | on | one-step causal extrapolation of the final state |
+| `deep_sup_weight` | `0.1` | weight of auxiliary CE on intermediate layers |
 | `loss_type` | `CE`, `BPR` | BPR needs negative sampling configured |
 
 ## Source map
@@ -44,6 +52,7 @@ flowchart TD
 | Hyper-parameters | `src/freqmat/models/config.py` |
 | Frequency filter / graph basis | `models/modules/frequency.py`, `graph_fourier.py` |
 | Mamba / attention / fusion / FFN+MoE | `models/modules/mamba.py`, `attention.py`, `fusion.py`, `ffn.py` |
+| Oscillator filter / local GRU branch / flip | `models/modules/oscillator.py`, `local.py` |
 
 Parameter counts depend on the dataset (embedding is `n_items x hidden_size`) and variant; read them from
 `metrics.json` (`params`) of a run instead of this document.

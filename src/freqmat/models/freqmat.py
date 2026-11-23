@@ -29,6 +29,8 @@ class FreqMaT(SequentialRecommender):
             self.loss_fct = BPRLoss()
         else:
             self.loss_fct = nn.CrossEntropyLoss()
+        if cfg.extrap:
+            self.extrap_dt = nn.Parameter(torch.zeros(()))  # 0 -> identity at init
         self.apply(self._init_weights)
 
     @staticmethod
@@ -62,9 +64,17 @@ class FreqMaT(SequentialRecommender):
             states.append(x)
         return states
 
+    def _readout(self, x: torch.Tensor, item_seq_len: torch.Tensor, extrap: bool = False) -> torch.Tensor:
+        """State at the last real item ``(B, D)``; optionally extrapolated one step along its causal velocity."""
+        q = self.gather_indexes(x, item_seq_len - 1)
+        if extrap:
+            prev = self.gather_indexes(x, (item_seq_len - 2).clamp_min(0))
+            q = q + self.extrap_dt * (q - prev) * (item_seq_len > 1).unsqueeze(-1).to(q.dtype)
+        return q
+
     def forward(self, item_seq, item_seq_len, timestamps=None):
         x = self.hidden_states(item_seq, timestamps)[-1]
-        return self.gather_indexes(x, item_seq_len - 1)
+        return self._readout(x, item_seq_len, self.cfg.extrap)
 
     def _encode(self, interaction) -> torch.Tensor:
         """Sequence representation ``(B, D)`` for a RecBole interaction batch."""
@@ -76,7 +86,9 @@ class FreqMaT(SequentialRecommender):
         return self.moe_aux_weight * sum(layer.ffn.aux_loss for layer in self.layers if layer.use_moe)
 
     def calculate_loss(self, interaction):
-        out = self._encode(interaction)
+        seq, seq_len = interaction[self.ITEM_SEQ], interaction[self.ITEM_SEQ_LEN]
+        states = self.hidden_states(seq, self._timestamps(interaction))
+        out = self._readout(states[-1], seq_len, self.cfg.extrap)
         pos = interaction[self.POS_ITEM_ID]
         if self.loss_type == "BPR":
             pos_score = (out * self.item_embedding(pos)).sum(-1)
@@ -84,6 +96,11 @@ class FreqMaT(SequentialRecommender):
             rec_loss = self.loss_fct(pos_score, neg_score)
         else:
             rec_loss = self.loss_fct(out @ self.item_embedding.weight.T, pos)
+        if self.cfg.deep_sup_active and len(states) > 2:
+            inner = states[1:-1]
+            weights = self.item_embedding.weight.T
+            deep = sum(self.loss_fct(self._readout(h, seq_len) @ weights, pos) for h in inner) / len(inner)
+            rec_loss = rec_loss + self.cfg.deep_sup_weight * deep
         return rec_loss + self._aux_loss()
 
     def predict(self, interaction):

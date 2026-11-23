@@ -83,6 +83,23 @@ VARIANTS = [
     {"use_attn": False},
     {"ffn_type": "dense"},
     {"freq_type": "none"},
+    {"freq_type": "osc"},
+    {"freq_type": "osc", "osc_hf": False},
+    {"freq_type": "osc", "freq_position": "branch"},
+    {"freq_type": "osc", "use_local": True},
+    {"freq_type": "osc", "use_local": True, "gate_granularity": "branch"},
+    {"freq_type": "osc", "mamba_flip": True},
+    {
+        "freq_type": "osc",
+        "freq_position": "branch",
+        "use_local": True,
+        "mamba_flip": True,
+        "gate_granularity": "branch",
+    },
+    {"freq_type": "osc", "mamba_flip": True, "flip_share_weights": True},
+    {"moe_shared": True, "moe_warmup_steps": 5},
+    {"deep_sup_weight": 0.1, "n_layers": 3},
+    {"extrap": True},
 ]
 
 
@@ -123,9 +140,70 @@ def test_bpr_requires_negative_sampling():
         {"freq_type": "x"},
         {"mamba_type": "x"},
         {"ffn_type": "x"},
-        {"use_mamba": False, "use_attn": False, "use_freq": False},
+        {"use_mamba": False, "use_attn": False, "use_freq": False, "use_local": False},
     ],
 )
 def test_invalid_config_rejected(bad):
+    with pytest.raises(ValueError):
+        FreqMaTConfig(**bad)
+
+
+NEW_KEYS = ("osc", "local", "flip", "shared", "alpha_raw", "extrap")
+OFF = dict(
+    freq_type="learned",
+    use_local=False,
+    mamba_flip=False,
+    gate_granularity="channel",
+    moe_shared=False,
+    moe_warmup_steps=0,
+    extrap=False,
+    deep_sup_weight=0.0,
+)
+
+
+def test_all_new_switches_off_adds_no_new_parameters():
+    keys = FreqMaT(make_config(**OFF), FakeDataset()).state_dict().keys()
+    assert not [k for k in keys if any(n in k for n in NEW_KEYS)]
+
+
+def test_defaults_enable_new_modules():
+    keys = FreqMaT(make_config(freq_type="osc"), FakeDataset()).state_dict().keys()
+    for name in ("freq.m_raw", "local.", "mamba_flip.", "ffn.shared.", "extrap_dt"):
+        assert any(name in k for k in keys), name
+
+
+def test_extrap_is_identity_at_init():
+    base = FreqMaT(make_config(extrap=False), FakeDataset()).eval()
+    ext = FreqMaT(make_config(extrap=True), FakeDataset()).eval()
+    ext.load_state_dict(base.state_dict(), strict=False)
+    b = make_batch()
+    assert torch.allclose(base.full_sort_predict(b), ext.full_sort_predict(b), atol=1e-6)
+
+
+def test_deep_supervision_changes_loss():
+    plain = FreqMaT(make_config(n_layers=3, deep_sup_weight=0.0), FakeDataset()).eval()
+    deep = FreqMaT(make_config(n_layers=3, deep_sup_weight=0.5), FakeDataset()).eval()
+    deep.load_state_dict(plain.state_dict())
+    b = make_batch()
+    assert not torch.allclose(deep.calculate_loss(b), plain.calculate_loss(b))
+
+
+def test_shared_moe_step_counts_only_in_training():
+    model = FreqMaT(make_config(moe_shared=True, moe_warmup_steps=10), FakeDataset())
+    ffn = model.layers[0].ffn
+    model.train()
+    model.calculate_loss(make_batch())
+    assert ffn.step.item() == 1
+    model.eval()
+    model.full_sort_predict(make_batch())
+    assert ffn.step.item() == 1
+    assert ffn.aux_loss.ndim == 0
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [{"gate_granularity": "x"}, {"deep_sup_weight": -1.0}, {"osc_beta_init": 0.0}],
+)
+def test_invalid_new_config_rejected(bad):
     with pytest.raises(ValueError):
         FreqMaTConfig(**bad)

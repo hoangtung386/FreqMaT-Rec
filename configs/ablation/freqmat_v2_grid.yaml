@@ -1,0 +1,23 @@
+# Oscillator / extra-branch grid. Run with: python scripts/run_ablation.py --grid configs/ablation/freqmat_v2_grid.yaml
+dataset: Amazon_Beauty
+epochs: 200
+seeds: [2024, 2025, 2026]
+variants:
+  # defaults have everything on; each variant switches pieces off ("w/o X")
+  full: {}
+  wo_osc_learned: {freq_type: learned}
+  wo_osc_bsa: {freq_type: bsa}
+  wo_osc_gft: {freq_type: gft}
+  wo_osc_none: {freq_type: none}
+  osc_lowpass_only: {osc_hf: false}
+  osc_branch: {freq_position: branch}
+  wo_local: {use_local: false}
+  wo_flip: {mamba_flip: false}
+  wo_shared_moe: {moe_shared: false}
+  wo_deepsup: {deep_sup_weight: 0.0}
+  wo_extrap: {extrap: false}
+  channel_gate: {gate_granularity: channel}
+  wo_mamba: {use_mamba: false}
+  wo_attn: {use_attn: false}
+  dense_ffn: {ffn_type: dense}
+  all_new_off: {freq_type: learned, use_local: false, mamba_flip: false, gate_granularity: channel, moe_shared: false, extrap: false, deep_sup_weight: 0.0}
