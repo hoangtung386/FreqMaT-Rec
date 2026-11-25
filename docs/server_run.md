@@ -61,3 +61,20 @@ The best epoch is chosen on validation NDCG@10. Test is evaluated once on that c
 Expect roughly 2 to 3 days for all 13 datasets at 100 epochs (ml-1m alone takes about half of that). Earlier runs on the
 development machine reached their best validation score within the first few epochs and then overfit, so
 `run_all.py --patience 10` finishes in a fraction of the time; use it only if that trade-off is accepted.
+
+## 5. Rules for whoever runs it
+
+- Do not change code, configs or the protocol (`configs/`, `src/`) without asking; fix only the environment (packages, paths).
+  Keep `train_batch_size` as configured even though the server GPU may be larger, so results stay comparable.
+- Never use the test split to choose an epoch, a checkpoint or a hyper-parameter. The protocol is fixed: temporal 80:10:10
+  split, checkpoint chosen on validation NDCG@10, test scored once.
+- Do not delete `outputs/`. Report errors verbatim.
+- If the rows of `make_subsets.py` differ from these, report it: `ml-20m_sub` 528,031 interactions / 8,000 users / 6,481 items;
+  `Amazon_Books_sub` 860,869 / 60,351 / 62,984; `Yelp_sub` 603,571 / 40,271 / 35,447; `KuaiRand_1K_sub` 91,962 / 998 / 10,513;
+  `LastFM_sub` 159,890 / 987 / 7,063.
+
+## 6. When it finishes, report per dataset
+
+Best epoch, validation NDCG@10 and Recall@10, test NDCG@10 / HR@10 / Recall@10 (from `metrics.json`), parameter count,
+run time, and any dataset that failed with the reason. Do not judge model quality without a baseline run under the same
+protocol.
