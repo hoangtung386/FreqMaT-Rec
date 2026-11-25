@@ -1,6 +1,6 @@
 # Hướng dẫn thiết kế lại kiến trúc FreqMaT
 
-Tài liệu này là **bản thiết kế và hướng dẫn thi công**. Nó dựa trên [paper-ideas.md](paper-ideas.md) (đã duyệt) và trên việc rà soát codebase hiện tại. **Trạng thái thi công:** đã cài `osc`, `use_local`, `mamba_flip`, `gate_granularity`, `moe_shared`, `extrap`, `deep_sup_weight`, `loss_scope=all` (mặc định `last`, vì `mamba_flip` không nhân quả), `pop_debias` và `pop_align_weight` (nay **mặc định BẬT**; cấu hình mặc định: hidden 256, inner 1024, 3 lớp, khoảng 9,3M tham số trên Beauty; tắt từng công tắc để làm ablation `w/o X`). **Chưa cài:** `pop_mode`/`pop_tau` (điều chỉnh logit), các module phân tích (mục 5). Mọi con số về hiệu năng là dự đoán; các con số về số tham số là tính toán hoặc đo trên bản mẫu (xem mục 9).
+Tài liệu này là **bản thiết kế và hướng dẫn thi công**. Nó dựa trên [paper-ideas.md](paper-ideas.md) (đã duyệt) và trên việc rà soát codebase hiện tại. **Trạng thái thi công:** đã cài `osc`, `use_local`, `mamba_flip`, `gate_granularity`, `moe_shared`, `extrap`, `deep_sup_weight`, `loss_scope=all` (mặc định `last`, vì `mamba_flip` không nhân quả), `pop_debias` và `pop_align_weight` (nay **mặc định BẬT**; cấu hình mặc định: hidden 256, inner 1024, 2 lớp, 7,44M tham số trên Beauty (đã đo); tắt từng công tắc để làm ablation `w/o X`). **Chưa cài:** `pop_mode`/`pop_tau` (điều chỉnh logit), các module phân tích (mục 5). Mọi con số về hiệu năng là dự đoán; các con số về số tham số là tính toán hoặc đo trên bản mẫu (xem mục 9).
 
 ## 1. Mục tiêu và nguyên tắc
 

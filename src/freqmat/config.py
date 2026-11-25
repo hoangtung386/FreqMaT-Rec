@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from freqmat import paths
+from freqmat.gpu import choose_gpu
 
 _SCIENTIFIC_FLOAT = re.compile(r"[+-]?(\d+\.?\d*|\.\d+)[eE][+-]?\d+")
 
@@ -48,6 +49,9 @@ def build_config(model: str, dataset: str, overrides: dict[str, Any] | None = No
     from freqmat.models import resolve_model
 
     values = {"data_path": str(paths.DATA_PROCESSED), "checkpoint_dir": str(paths.OUTPUTS / "adhoc")}
+    gpu = choose_gpu()
+    if gpu is not None:
+        values["gpu_id"] = gpu  # GPU 1 when the machine has one, else GPU 0; an explicit gpu_id override wins below
     values.update(overrides or {})
     return Config(
         model=resolve_model(model),

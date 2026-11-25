@@ -4,16 +4,33 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+ACTIVATIONS = ("gelu", "swiglu")
+
+
+def gated_inner(inner: int, act: str) -> int:
+    """Hidden width of one FFN; SwiGLU has three matrices instead of two, so it uses 2/3 of it (multiple of 8)."""
+    return inner if act == "gelu" else max(8, round(inner * 2 / 3 / 8) * 8)
+
 
 class FFN(nn.Module):
-    def __init__(self, hidden: int, inner: int, dropout: float):
+    """``Linear -> act -> Linear``; with ``act="swiglu"``: ``(silu(x W_gate) * (x W_up)) W_down``."""
+
+    def __init__(self, hidden: int, inner: int, dropout: float, act: str = "gelu"):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(hidden, inner), nn.GELU(), nn.Dropout(dropout), nn.Linear(inner, hidden), nn.Dropout(dropout)
-        )
+        self.swiglu = act == "swiglu"
+        inner = gated_inner(inner, act)
+        self.up = nn.Linear(hidden, inner * 2 if self.swiglu else inner)
+        self.down = nn.Linear(inner, hidden)
+        self.drop = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+        h = self.up(x)
+        if self.swiglu:
+            gate, up = h.chunk(2, dim=-1)
+            h = F.silu(gate) * up
+        else:
+            h = F.gelu(h)
+        return self.drop(self.down(self.drop(h)))
 
 
 class MoEFFN(nn.Module):
@@ -24,12 +41,15 @@ class MoEFFN(nn.Module):
     balance loss of the last forward pass.
     """
 
-    def __init__(self, hidden: int, expert_inner: int, n_experts: int, top_k: int, dropout: float):
+    def __init__(self, hidden: int, expert_inner: int, n_experts: int, top_k: int, dropout: float, act: str = "gelu"):
         super().__init__()
         self.n_experts, self.top_k = n_experts, top_k
+        self.swiglu = act == "swiglu"
+        expert_inner = gated_inner(expert_inner, act)
         self.router = nn.Linear(hidden, n_experts, bias=False)
-        self.w1 = nn.Parameter(torch.randn(n_experts, hidden, expert_inner) * 0.02)
-        self.b1 = nn.Parameter(torch.zeros(n_experts, expert_inner))
+        up = expert_inner * 2 if self.swiglu else expert_inner
+        self.w1 = nn.Parameter(torch.randn(n_experts, hidden, up) * 0.02)
+        self.b1 = nn.Parameter(torch.zeros(n_experts, up))
         self.w2 = nn.Parameter(torch.randn(n_experts, expert_inner, hidden) * 0.02)
         self.b2 = nn.Parameter(torch.zeros(n_experts, hidden))
         self.drop = nn.Dropout(dropout)
@@ -47,7 +67,12 @@ class MoEFFN(nn.Module):
         )
         mean_prob = (probs * valid.unsqueeze(-1)).sum((0, 1)) / n_tokens
         self.aux_loss = self.n_experts * (frac * mean_prob).sum()
-        h = F.gelu(torch.einsum("bld,edi->blei", x, self.w1) + self.b1)
+        h = torch.einsum("bld,edi->blei", x, self.w1) + self.b1
+        if self.swiglu:
+            gate, up = h.chunk(2, dim=-1)
+            h = F.silu(gate) * up
+        else:
+            h = F.gelu(h)
         y = torch.einsum("blei,eih->bleh", self.drop(h), self.w2) + self.b2
         return self.drop((y * gates.unsqueeze(-1).to(y.dtype)).sum(2))
 
@@ -67,10 +92,11 @@ class SharedMoEFFN(nn.Module):
         top_k: int,
         dropout: float,
         warmup_steps: int = 0,
+        act: str = "gelu",
     ):
         super().__init__()
-        self.shared = FFN(hidden, shared_inner, dropout)
-        self.routed = MoEFFN(hidden, expert_inner, n_experts, top_k, dropout)
+        self.shared = FFN(hidden, shared_inner, dropout, act)
+        self.routed = MoEFFN(hidden, expert_inner, n_experts, top_k, dropout, act)
         self.alpha_raw = nn.Parameter(torch.zeros(()))
         self.warmup = warmup_steps
         self.register_buffer("step", torch.zeros((), dtype=torch.long))

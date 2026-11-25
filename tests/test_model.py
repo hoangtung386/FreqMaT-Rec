@@ -73,6 +73,10 @@ def make_batch():
 
 VARIANTS = [
     {},
+    {"pos_embedding": False},
+    {"norm_position": "post", "norm_type": "layernorm", "ffn_act": "gelu", "head_mlp": False},
+    {"norm_position": "post", "ffn_act": "swiglu", "moe_shared": False},
+    {"ffn_type": "dense", "ffn_act": "swiglu"},
     {"freq_type": "bsa"},
     {"freq_type": "both"},
     {"freq_type": "gft"},
@@ -148,7 +152,7 @@ def test_invalid_config_rejected(bad):
         FreqMaTConfig(**bad)
 
 
-NEW_KEYS = ("osc", "local", "flip", "shared", "alpha_raw", "extrap")
+NEW_KEYS = ("osc", "local", "flip", "shared", "alpha_raw", "extrap", "pos_embedding", "final_norm", "head.")
 OFF = dict(
     freq_type="learned",
     use_local=False,
@@ -158,6 +162,11 @@ OFF = dict(
     moe_warmup_steps=0,
     extrap=False,
     deep_sup_weight=0.0,
+    pos_embedding=False,
+    norm_position="post",
+    norm_type="layernorm",
+    ffn_act="gelu",
+    head_mlp=False,
 )
 
 
@@ -168,7 +177,16 @@ def test_all_new_switches_off_adds_no_new_parameters():
 
 def test_defaults_enable_new_modules():
     keys = FreqMaT(make_config(freq_type="osc"), FakeDataset()).state_dict().keys()
-    for name in ("freq.m_raw", "local.", "mamba_flip.", "ffn.shared.", "extrap_dt"):
+    for name in (
+        "freq.m_raw",
+        "local.",
+        "mamba_flip.",
+        "ffn.shared.",
+        "extrap_dt",
+        "pos_embedding.weight",
+        "final_norm.weight",
+        "head.net.0.weight",
+    ):
         assert any(name in k for k in keys), name
 
 
@@ -249,3 +267,71 @@ def test_loss_scope_all_rejects_noncausal_and_matches_shape():
     loss = m.calculate_loss(make_batch())
     loss.backward()
     assert torch.isfinite(loss)
+
+
+def test_rmsnorm_matches_definition_and_swiglu_keeps_parameter_count():
+    from freqmat.models.modules import FFN, MoEFFN, RMSNorm
+
+    x = torch.randn(3, 5, 16)
+    out = RMSNorm(16, eps=1e-6)(x)
+    expected = x / x.pow(2).mean(-1, keepdim=True).add(1e-6).sqrt()
+    assert torch.allclose(out, expected, atol=1e-5)
+    count = lambda m: sum(p.numel() for p in m.parameters())  # noqa: E731
+    assert abs(count(FFN(64, 256, 0.0, "swiglu")) / count(FFN(64, 256, 0.0, "gelu")) - 1) < 0.05
+    assert abs(count(MoEFFN(64, 96, 4, 2, 0.0, "swiglu")) / count(MoEFFN(64, 96, 4, 2, 0.0, "gelu")) - 1) < 0.1
+    assert FFN(64, 256, 0.0, "swiglu")(x.new_zeros(2, 3, 64)).shape == (2, 3, 64)
+
+
+def test_pre_norm_stack_has_final_norm_and_post_norm_does_not():
+    pre = FreqMaT(make_config(norm_position="pre"), FakeDataset())
+    post = FreqMaT(make_config(norm_position="post"), FakeDataset())
+    assert pre.final_norm is not None and post.final_norm is None
+
+
+def test_output_head_is_residual_and_changes_the_score():
+    torch.manual_seed(0)
+    with_head = FreqMaT(make_config(head_mlp=True), FakeDataset()).eval()
+    without = FreqMaT(make_config(head_mlp=False), FakeDataset()).eval()
+    without.load_state_dict(with_head.state_dict(), strict=False)
+    batch = make_batch()
+    a = with_head.full_sort_predict(batch)
+    b = without.full_sort_predict(batch)
+    assert a.shape == b.shape and not torch.allclose(a, b)
+
+
+def test_invalid_block_options_rejected():
+    for bad in ({"norm_position": "mid"}, {"norm_type": "batchnorm"}, {"ffn_act": "relu"}):
+        with pytest.raises(ValueError):
+            FreqMaTConfig(**bad)
+
+
+def test_yaml_defaults_match_dataclass_and_enable_every_block():
+    from dataclasses import fields
+
+    import yaml
+
+    from freqmat import paths
+
+    y = yaml.safe_load((paths.CONFIGS / "model" / "freqmat.yaml").read_text())
+    defaults = {f.name: f.default for f in fields(FreqMaTConfig)}
+    intended = {"mamba_type", "d_state"}  # the YAML targets the Mamba-3 kernels; the dataclass stays dependency-free
+    assert {k: v for k, v in y.items() if k in defaults and k not in intended and v != defaults[k]} == {}
+    for name in (
+        "pos_embedding",
+        "head_mlp",
+        "use_attn",
+        "use_mamba",
+        "use_local",
+        "mamba_flip",
+        "moe_shared",
+        "extrap",
+    ):
+        assert y[name] is True, name
+    assert (y["norm_position"], y["norm_type"], y["ffn_act"], y["freq_type"], y["n_layers"]) == (
+        "pre",
+        "rmsnorm",
+        "swiglu",
+        "osc",
+        2,
+    )
+    assert y["deep_sup_weight"] > 0 and y["pop_debias"] and y["pop_align_weight"] > 0

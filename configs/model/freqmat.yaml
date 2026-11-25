@@ -1,6 +1,6 @@
 hidden_size: 256
 inner_size: 1024
-n_layers: 3
+n_layers: 2
 ffn_type: moe        # moe (default, replaces the FFN) | dense (for ablation)
 moe_experts: 8
 moe_topk: 2
@@ -36,6 +36,11 @@ gate_granularity: branch  # channel | branch (scalar gate per branch: far fewer 
 moe_shared: true     # always-on shared expert + routed experts
 moe_shared_inner: null     # null -> inner_size // 2
 moe_warmup_steps: 1000 # linear ramp of the routed part (training steps); 0 = off
+norm_position: pre   # pre | post: x + f(norm(x)) with a final norm, or norm(x + f(x))
+norm_type: rmsnorm   # rmsnorm | layernorm
+ffn_act: swiglu      # swiglu | gelu (swiglu uses 2/3 of the width: same parameter count)
+head_mlp: true       # residual MLP on the final state before scoring against the item embeddings
+pos_embedding: true # learned absolute position embedding (SASRec-style)
 extrap: true         # one-step causal extrapolation of the final state
 deep_sup_weight: 0.1 # weight of auxiliary CE on intermediate layers
 loss_scope: last # last | all (all needs mamba_flip: false and freq_type none/osc: every branch causal)

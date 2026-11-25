@@ -15,12 +15,16 @@ from freqmat.models.modules import (
     OscFilter,
     RoPEAttention,
     SharedMoEFFN,
+    make_norm,
     partial_flip_index,
 )
 
 
 class FreqMaTLayer(nn.Module):
-    """Freq denoise -> [Mamba || RoPE-Attn] -> gated fusion -> FFN/MoE (post-LN residuals).
+    """Freq denoise -> [Mamba || RoPE-Attn || ...] -> gated fusion -> FFN/MoE, with pre- or post-norm residuals.
+
+    ``norm_position="pre"`` (default): ``x = x + mix(norm1(x)); x = x + ffn(norm2(x))``; the model applies one final
+    norm after the last layer. ``"post"``: ``x = norm1(x + mix(x)); x = norm2(x + ffn(x))``.
 
     ``freq_position="pre"``: the frequency filter runs sequentially before the other branches.
     ``freq_position="branch"``: the filter is a *parallel* branch (as in BSARec) and is fused by the
@@ -52,20 +56,28 @@ class FreqMaTLayer(nn.Module):
         if cfg.n_branches >= 2:
             self.fusion = GatedFusion(hidden, cfg.n_branches, cfg.gate_granularity)
         self.drop = nn.Dropout(dropout)
-        self.norm1 = nn.LayerNorm(hidden, eps=eps)
+        self.pre_norm = cfg.norm_position == "pre"
+        self.norm1 = make_norm(cfg.norm_type, hidden, eps)
         self.use_moe = cfg.ffn_type == "moe"
         if self.use_moe and cfg.moe_shared:
             shared_inner = cfg.moe_shared_inner or cfg.inner_size // 2
             expert_inner = cfg.moe_inner or max(1, (cfg.inner_size - shared_inner) // cfg.moe_experts)
             self.ffn = SharedMoEFFN(
-                hidden, shared_inner, expert_inner, cfg.moe_experts, cfg.moe_topk, dropout, cfg.moe_warmup_steps
+                hidden,
+                shared_inner,
+                expert_inner,
+                cfg.moe_experts,
+                cfg.moe_topk,
+                dropout,
+                cfg.moe_warmup_steps,
+                cfg.ffn_act,
             )
         elif self.use_moe:  # expert size defaults to inner_size / n_experts -> ~same params as dense FFN
             expert_inner = cfg.moe_inner or cfg.inner_size // cfg.moe_experts
-            self.ffn = MoEFFN(hidden, expert_inner, cfg.moe_experts, cfg.moe_topk, dropout)
+            self.ffn = MoEFFN(hidden, expert_inner, cfg.moe_experts, cfg.moe_topk, dropout, cfg.ffn_act)
         else:
-            self.ffn = FFN(hidden, cfg.inner_size, dropout)
-        self.norm2 = nn.LayerNorm(hidden, eps=eps)
+            self.ffn = FFN(hidden, cfg.inner_size, dropout, cfg.ffn_act)
+        self.norm2 = make_norm(cfg.norm_type, hidden, eps)
 
     @staticmethod
     def _build_mamba(cfg: FreqMaTConfig) -> nn.Module:
@@ -80,21 +92,26 @@ class FreqMaTLayer(nn.Module):
         if has_freq and not self.freq_branch:
             x = self.freq(x, basis)
         residual = x
+        h = self.norm1(x) if self.pre_norm else x
         branches = []
         if has_freq and self.freq_branch:
-            branches.append(self.freq.filter(x, basis))
+            branches.append(self.freq.filter(h, basis))
         if self.use_mamba:
-            branches.append(self.mamba(x))
+            branches.append(self.mamba(h))
             if self.use_flip:
-                branches.append(self._flipped(x, mask))
+                branches.append(self._flipped(h, mask))
         if self.use_attn:
-            branches.append(self.attn(x))
+            branches.append(self.attn(h))
         if self.use_local:
-            branches.append(self.local(x))
+            branches.append(self.local(h))
         mixed = branches[0] if len(branches) == 1 else self.fusion(*branches)
-        x = self.norm1(residual + self.drop(mixed))
-        ffn_out = self.ffn(x, mask) if self.use_moe else self.ffn(x)
-        return self.norm2(x + ffn_out)
+        x = residual + self.drop(mixed)
+        if not self.pre_norm:
+            x = self.norm1(x)
+        h = self.norm2(x) if self.pre_norm else x
+        ffn_out = self.ffn(h, mask) if self.use_moe else self.ffn(h)
+        x = x + ffn_out
+        return x if self.pre_norm else self.norm2(x)
 
     def _flipped(self, x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
         """Mamba over the partially flipped sequence, flipped back so positions line up with ``x``."""

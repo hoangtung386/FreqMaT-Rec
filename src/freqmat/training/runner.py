@@ -105,6 +105,7 @@ def train_and_eval(
     trainer = None
     try:
         with working_directory(run_dir):
+            print(f"DEVICE {config['device']} (physical GPU id {config['gpu_id']})", flush=True)
             init_seed(config["seed"], config["reproducibility"])
             init_logger(config)
             data = create_dataset(config)

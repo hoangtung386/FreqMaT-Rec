@@ -18,7 +18,7 @@ class FreqMaTConfig:
 
     hidden_size: int = 256
     inner_size: int = 1024
-    n_layers: int = 3
+    n_layers: int = 2
     max_seq_len: int = 50
     hidden_dropout_prob: float = 0.3
     attn_dropout_prob: float = 0.1
@@ -60,7 +60,14 @@ class FreqMaTConfig:
     moe_shared: bool = True
     moe_shared_inner: int | None = None
     moe_warmup_steps: int = 1000
+    # block structure (modern Transformer recipe)
+    norm_position: str = "pre"  # "pre": x + f(norm(x)) with a final norm; "post": norm(x + f(x))
+    norm_type: str = "rmsnorm"  # rmsnorm | layernorm
+    ffn_act: str = "swiglu"  # swiglu | gelu
+    # input
+    pos_embedding: bool = True  # learned absolute position embedding added to the item embedding (SASRec-style)
     # output
+    head_mlp: bool = True  # residual MLP on the final state before scoring against the item embeddings
     extrap: bool = True
     deep_sup_weight: float = 0.1
     # training objective
@@ -77,6 +84,9 @@ class FreqMaTConfig:
         _check("ffn_type", self.ffn_type, FFN_TYPES)
         _check("loss_type", self.loss_type, ("CE", "BPR"))
         _check("gate_granularity", self.gate_granularity, GATE_GRANULARITIES)
+        _check("norm_position", self.norm_position, ("pre", "post"))
+        _check("norm_type", self.norm_type, ("rmsnorm", "layernorm"))
+        _check("ffn_act", self.ffn_act, ("gelu", "swiglu"))
         _check("loss_scope", self.loss_scope, ("last", "all"))
         if self.loss_scope == "all":
             if self.loss_type != "CE":

@@ -1,6 +1,6 @@
 # FreqMaT ablation grid: every variant is a set of config overrides applied on top of the defaults.
 dataset: Amazon_Beauty
-epochs: 200
+epochs: 100
 seeds: [2024, 2025, 2026]
 variants:
   # frequency module: none vs learned (FMLP) vs rescaler (BSA) vs both vs graph-Fourier

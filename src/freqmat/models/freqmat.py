@@ -7,7 +7,7 @@ from recbole.model.loss import BPRLoss
 
 from freqmat.models.config import FreqMaTConfig
 from freqmat.models.layer import FreqMaTLayer
-from freqmat.models.modules import time_graph_basis
+from freqmat.models.modules import OutputHead, make_norm, time_graph_basis
 from freqmat.models.popularity import head_mask, popularity_counts
 
 
@@ -21,9 +21,21 @@ class FreqMaT(SequentialRecommender):
         self.needs_time = cfg.use_freq and cfg.freq_type == "gft"
         self.moe_aux_weight = cfg.moe_aux_weight if cfg.ffn_type == "moe" else 0.0
         self.item_embedding = nn.Embedding(self.n_items, cfg.hidden_size, padding_idx=0)
+        self.pos_embedding = nn.Embedding(cfg.max_seq_len, cfg.hidden_size) if cfg.pos_embedding else None
         self.emb_drop = nn.Dropout(cfg.hidden_dropout_prob)
-        self.emb_norm = nn.LayerNorm(cfg.hidden_size, eps=cfg.layer_norm_eps)
+        self.emb_norm = make_norm(cfg.norm_type, cfg.hidden_size, cfg.layer_norm_eps)
         self.layers = nn.ModuleList([FreqMaTLayer(cfg) for _ in range(cfg.n_layers)])
+        # a pre-norm stack leaves the residual stream un-normalised, so one norm follows the last layer
+        self.final_norm = (
+            make_norm(cfg.norm_type, cfg.hidden_size, cfg.layer_norm_eps) if cfg.norm_position == "pre" else None
+        )
+        self.head = (
+            OutputHead(
+                cfg.hidden_size, cfg.hidden_dropout_prob, make_norm(cfg.norm_type, cfg.hidden_size, cfg.layer_norm_eps)
+            )
+            if cfg.head_mlp
+            else None
+        )
         if cfg.loss_type == "BPR":
             if not config["train_neg_sample_args"]:
                 raise ValueError("loss_type=BPR needs train_neg_sample_args (negative sampling) in the config")
@@ -57,7 +69,10 @@ class FreqMaT(SequentialRecommender):
     def hidden_states(self, item_seq: torch.Tensor, timestamps: torch.Tensor | None = None) -> list:
         """``[embedding output, layer 1 output, ..., layer L output]``, each ``(B, N, D)``."""
         mask = item_seq != 0
-        x = self.emb_norm(self.emb_drop(self.item_embedding(item_seq)))
+        x = self.item_embedding(item_seq)
+        if self.pos_embedding is not None:
+            x = x + self.pos_embedding(torch.arange(item_seq.size(1), device=item_seq.device))
+        x = self.emb_norm(self.emb_drop(x))
         x = x * mask.unsqueeze(-1)  # zero padding (padding sits at the end of each sequence in RecBole)
         basis = None
         if self.needs_time:
@@ -74,10 +89,14 @@ class FreqMaT(SequentialRecommender):
 
     def _readout(self, x: torch.Tensor, item_seq_len: torch.Tensor, extrap: bool = False) -> torch.Tensor:
         """State at the last real item ``(B, D)``; optionally extrapolated one step along its causal velocity."""
+        if self.final_norm is not None:
+            x = self.final_norm(x)
         q = self.gather_indexes(x, item_seq_len - 1)
         if extrap:
             prev = self.gather_indexes(x, (item_seq_len - 2).clamp_min(0))
             q = q + self.extrap_dt * (q - prev) * (item_seq_len > 1).unsqueeze(-1).to(q.dtype)
+        if self.head is not None:
+            q = self.head(q)
         return self._debias(q)
 
     def _debias(self, q: torch.Tensor) -> torch.Tensor:
@@ -88,9 +107,13 @@ class FreqMaT(SequentialRecommender):
 
     def _readout_all(self, x: torch.Tensor) -> torch.Tensor:
         """Every position's state ``(B, N, D)``; extrapolation uses the previous position (zero velocity at t=0)."""
+        if self.final_norm is not None:
+            x = self.final_norm(x)
         if self.cfg.extrap:
             prev = torch.cat([x[:, :1], x[:, :-1]], dim=1)
             x = x + self.extrap_dt * (x - prev)
+        if self.head is not None:
+            x = self.head(x)
         return self._debias(x)
 
     def _align_loss(self, seq: torch.Tensor) -> torch.Tensor:

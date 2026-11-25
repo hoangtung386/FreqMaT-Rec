@@ -59,25 +59,28 @@ Datasets must exist under `data/processed/` first (see [docs/datasets.md](docs/d
 **3. Train one dataset:**
 
 ```bash
-.venv/bin/python scripts/train.py -m FreqMaT -d Amazon_Beauty                       # defaults: 200 epochs, early stopping 10
+.venv/bin/python scripts/train.py -m FreqMaT -d Amazon_Beauty                       # defaults: 100 epochs, early stopping 10
 .venv/bin/python scripts/train.py -m FreqMaT -d Amazon_Beauty -s use_local=false    # ablation switch
 .venv/bin/python scripts/train.py -m SASRec  -d Amazon_Beauty                       # RecBole baseline
 ```
 
-**4. Train every dataset, 200 epochs each** (one fresh process per dataset, so the GPU is emptied and the model
+**4. Train every dataset, 100 epochs each** (one fresh process per dataset, so the GPU is emptied and the model
 re-initialised between datasets; an out-of-memory failure is retried once with half the batch size):
 
 ```bash
-nohup .venv/bin/python scripts/run_all.py > run_all.log 2>&1 &                      # all 13, 200 epochs, no early stopping
-.venv/bin/python scripts/run_all.py -d Amazon_Beauty ml-1m --epochs 200 --patience 10   # subset, with early stopping
+nohup .venv/bin/python scripts/run_all.py > run_all.log 2>&1 &                      # all 13, 100 epochs, no early stopping
+.venv/bin/python scripts/run_all.py -d Amazon_Beauty ml-1m --epochs 100 --patience 10   # subset, with early stopping
 ```
 
-Summary table: `results/full_200.tsv`. Progress: `tail -f run_all.log`, or `outputs/full_200/<run>/history.csv`.
+**GPU choice:** training uses physical GPU 1 when the machine has one, otherwise GPU 0 (`src/freqmat/gpu.py`). Force a
+GPU with `FREQMAT_GPU=0 python scripts/run_all.py` or `-s gpu_id=0`. Every run prints `DEVICE ...` at the start.
+
+Summary table: `results/full_100.tsv`. Progress: `tail -f run_all.log`, or `outputs/full_100/<run>/history.csv`.
 
 **5. Plot learning curves for the paper:**
 
 ```bash
-.venv/bin/python scripts/plot_history.py outputs/full_200/* --out figures
+.venv/bin/python scripts/plot_history.py outputs/full_100/* --out figures
 ```
 
 **6. Ablations and analysis:**

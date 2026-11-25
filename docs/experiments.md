@@ -26,14 +26,15 @@ Artefacts go to `outputs/my_experiment/<timestamp>_FreqMaT_Amazon_Beauty_<hash>/
 - Items that appear only after the training period (about 6% of validation and 19% of test targets on Toys) have an
   untrained embedding, which caps the achievable metric. This is the cost of a temporal split.
 
-## Full training: 200 epochs on every dataset
+## Full training: 100 epochs on every dataset
 ```bash
-.venv/bin/python scripts/run_all.py                          # all 13 datasets, 200 epochs each, no early stopping
-.venv/bin/python scripts/run_all.py -d Amazon_Beauty --epochs 200 --patience 10
+.venv/bin/python scripts/run_all.py                          # all 13 datasets, 100 epochs each, no early stopping
+.venv/bin/python scripts/run_all.py -d Amazon_Beauty --epochs 100 --patience 10
 ```
+GPU: physical GPU 1 if the machine has one, otherwise GPU 0 (`FREQMAT_GPU=<id>` or `-s gpu_id=<id>` to force one).
 Each dataset runs in a fresh process, so the GPU is empty and the model is re-initialised before the next one. The best
 checkpoint (validation NDCG@10) is saved at every improvement and evaluated on test at the end. A CUDA out-of-memory
-failure is retried once with half the batch size. Summary: `results/full_200.tsv`.
+failure is retried once with half the batch size. Summary: `results/full_100.tsv`.
 
 Per run, under `outputs/<experiment>/<timestamp>_<model>_<dataset>_<hash>/`:
 
@@ -46,7 +47,7 @@ Per run, under `outputs/<experiment>/<timestamp>_<model>_<dataset>_<hash>/`:
 | `log/` | RecBole text log (every epoch line, parameter summary) |
 | `log_tensorboard/` | TensorBoard scalars (`Loss/Train`, validation score) |
 
-Learning curves for the paper: `python scripts/plot_history.py outputs/full_200/* --out figures` (PDF and PNG per run).
+Learning curves for the paper: `python scripts/plot_history.py outputs/full_100/* --out figures` (PDF and PNG per run).
 
 Check memory and speed of a dataset before a long run: `python scripts/check_data.py -d <dataset>`.
 
