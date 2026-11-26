@@ -1,4 +1,5 @@
-# Shared protocol: global temporal split 80:10:10, FULL-ranking (no sampled metrics)
+# Shared protocol: leave-one-out (per user: last item = test, second-to-last = validation, rest = train),
+# FULL-ranking (no sampled metrics). Same protocol as the compared papers (SASRec-style).
 data_path: data
 load_col:
   inter: [user_id, item_id, rating, timestamp]
@@ -10,10 +11,10 @@ item_inter_num_interval: "[5,inf)"
 MAX_ITEM_LIST_LENGTH: 50
 benchmark_filename: null
 eval_args:
-  # all interactions sorted by time: the first 80% train, the next 10% validation, the last 10% test.
-  # Every sample's history is older than its target, and no training target is newer than a validation target.
-  split: {RS: [0.8, 0.1, 0.1]}
-  group_by: none
+  # Per user, interactions sorted by time: the last one is the test target, the second-to-last the validation target,
+  # all earlier ones are training data (RecBole 'LS': leave-one-out, valid_and_test).
+  split: {LS: valid_and_test}
+  group_by: user
   order: TO
   mode: full
 repeatable: true

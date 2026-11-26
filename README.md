@@ -93,7 +93,7 @@ Summary table: `results/full_100.tsv`. Progress: `tail -f run_all.log`, or `outp
 
 Every run writes `outputs/<experiment>/<timestamp>_<model>_<dataset>_<hash>/` containing `config.json`, `metrics.json`,
 `history.csv` (one row per epoch), the best checkpoint, and RecBole `log/` + `log_tensorboard/`.
-Protocol (`configs/protocol.yaml`): global temporal split 80:10:10 (train / validation / test), **full-ranking**,
+Protocol (`configs/protocol.yaml`): leave-one-out split (per user: last item test, second-to-last validation, rest train), **full-ranking**,
 HR/NDCG/Recall@{5,10}, 5-core. The best epoch is chosen on validation NDCG@10; test is evaluated once on that checkpoint.
 
 ## Layout
