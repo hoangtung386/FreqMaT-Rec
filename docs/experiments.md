@@ -1,8 +1,8 @@
 # Experiments
 
 ## Protocol
-Global temporal split **80 : 10 : 10** (all interactions sorted by time: the first 80% train, the next 10% validation,
-the last 10% test), **full ranking** (no sampled metrics), 5-core filtering, metrics HR / NDCG / Recall @ {5, 10},
+**Leave-one-out** split (per user, interactions sorted by time: the last one is the test target, the second-to-last the
+validation target, the rest train), **full ranking** (no sampled metrics), 5-core filtering, metrics HR / NDCG / Recall @ {5, 10},
 model selection on validation NDCG@10, cross-entropy loss, default seed 2024
 (`configs/protocol.yaml`). Config layers, lowest to highest priority: `protocol.yaml` -> `model/<model>.yaml` ->
 `dataset/<dataset>.yaml` -> command-line `-s key=value`.
@@ -14,17 +14,18 @@ model selection on validation NDCG@10, cross-entropy loss, default seed 2024
 Artefacts go to `outputs/my_experiment/<timestamp>_FreqMaT_Amazon_Beauty_<hash>/`.
 
 ## Data split and leakage
-- Every sample is "history before time t, predict the item at time t". A validation or test sample's history may contain
-  training-period items (that is what the model would know at that time), but no training target is newer than a
-  validation target, and no validation target is newer than a test target.
+- Per user, the interactions are sorted by time. The last interaction is the test target, the second-to-last is the
+  validation target and everything before is training data. A validation sample's history is the training sequence; a
+  test sample's history is the training sequence plus the validation item. This is the protocol of the compared papers.
+- Leave-one-out is not a global temporal split: the validation/test target of one user can be older than a training
+  target of another user. State this in the paper when comparing.
 - The test split is evaluated once, on the checkpoint with the best **validation** NDCG@10. It is never used to pick
   the epoch, the checkpoint or any hyper-parameter, and `history.csv` logs validation only.
 - Popularity statistics (`pop_debias`, `pop_align_weight`) are counted from training targets only.
 - 5-core filtering is applied to the whole table before splitting (standard practice); it keeps only items and users
   with at least 5 interactions overall.
-- Timestamps in the Amazon sets have day resolution, so interactions that share the boundary day can fall on either side.
-- Items that appear only after the training period (about 6% of validation and 19% of test targets on Toys) have an
-  untrained embedding, which caps the achievable metric. This is the cost of a temporal split.
+- Earlier results under the global temporal 80:10:10 split are kept in `outputs_temporal_80_10_10/` (git-ignored) and
+  are not comparable with leave-one-out numbers.
 
 ## Full training: 100 epochs on every dataset
 ```bash

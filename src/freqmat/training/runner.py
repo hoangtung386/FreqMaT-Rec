@@ -89,7 +89,7 @@ def train_and_eval(
     experiment: str = "adhoc",
     show_progress: bool = True,
 ) -> RunResult:
-    """Fit ``model`` on ``dataset`` (temporal 80:10:10 split, full ranking), evaluate the best checkpoint on test."""
+    """Fit ``model`` on ``dataset`` (leave-one-out split, full ranking), evaluate the best checkpoint on test."""
     allow_unsafe_torch_load()
     from recbole.data import create_dataset, data_preparation
     from recbole.utils import init_logger, init_seed

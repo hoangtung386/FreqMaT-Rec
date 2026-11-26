@@ -66,7 +66,7 @@ development machine reached their best validation score within the first few epo
 
 - Do not change code, configs or the protocol (`configs/`, `src/`) without asking; fix only the environment (packages, paths).
   Keep `train_batch_size` as configured even though the server GPU may be larger, so results stay comparable.
-- Never use the test split to choose an epoch, a checkpoint or a hyper-parameter. The protocol is fixed: temporal 80:10:10
+- Never use the test split to choose an epoch, a checkpoint or a hyper-parameter. The protocol is fixed: leave-one-out
   split, checkpoint chosen on validation NDCG@10, test scored once.
 - Do not delete `outputs/`. Report errors verbatim.
 - If the rows of `make_subsets.py` differ from these, report it: `ml-20m_sub` 528,031 interactions / 8,000 users / 6,481 items;

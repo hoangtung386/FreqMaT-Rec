@@ -27,6 +27,8 @@ data/processed/
 # Experiment artefacts. `outputs/` is where runs write; the other names are RecBole's defaults
 # (log/, log_tensorboard/, saved/) in case a script is run outside the runner.
 outputs/
+outputs_*/
+results_temporal_*/
 log/
 log_tensorboard/
 saved/
